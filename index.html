@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>スプレッドシート連動・英単語テスト</title>
+    <style>
+        /* 前回のCSSと同じ（省略せずそのまま使えます） */
+        body { font-family: sans-serif; display: flex; justify-content: center; padding-top: 50px; background-color: #f0f2f5; }
+        .quiz-container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); width: 400px; text-align: center; }
+        .question { font-size: 24px; font-weight: bold; margin-bottom: 20px; }
+        .choices { display: grid; gap: 10px; }
+        button { padding: 15px; font-size: 16px; cursor: pointer; border: 2px solid #007bff; background: white; border-radius: 8px; }
+        button:hover { background: #007bff; color: white; }
+        #result { margin-top: 20px; font-weight: bold; height: 24px; }
+    </style>
+</head>
+<body>
+
+<div class="quiz-container" id="main-container">
+    <div id="loading">データを読み込み中...</div>
+    <div id="quiz-content" style="display:none;">
+        <div id="question" class="question"></div>
+        <div class="choices">
+            <button onclick="checkAnswer(0)" id="btn0"></button>
+            <button onclick="checkAnswer(1)" id="btn1"></button>
+            <button onclick="checkAnswer(2)" id="btn2"></button>
+            <button onclick="checkAnswer(3)" id="btn3"></button>
+        </div>
+        <div id="result"></div>
+        <button onclick="nextQuestion()" style="margin-top:20px; border-color:#28a745;">次の問題へ</button>
+    </div>
+</div>
+
+<script>
+    // ★ここに自分のスプレッドシートのURL（CSV形式）を貼り付けてください
+    const sheetUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQgShHlUrJzByyKPruQAjCUSEfbcNpN-VyxNKaoSBtb-RyQNjQVnxe3F8s4aZiupV9-k6nzt_1-BVdl/pub?gid=0&single=true&output=csv";
+
+    let quizData = [];
+    let currentIdx = 0;
+    let score = 0;
+
+    // 1. スプレッドシートからデータを取得する関数
+    async function initApp() {
+        try {
+            const response = await fetch(sheetUrl);
+            const csvText = await response.text();
+            
+            // CSVを解析（改行で区切って、各行をカンマで区切る）
+            const rows = csvText.split(/\r?\n/).slice(1); 
+            quizData = rows.map(row => {
+                const [q, a, d1, d2, d3] = row.split(',');
+                // 選択肢を混ぜる（シャッフル）
+                const choices = [a, d1, d2, d3].sort(() => Math.random() - 0.5);
+                return { q, a, choices };
+            });
+
+            // 読み込みが終わったら画面を表示
+            document.getElementById("loading").style.display = "none";
+            document.getElementById("quiz-content").style.display = "block";
+            showQuestion();
+        } catch (error) {
+            document.getElementById("loading").innerText = "読み込みに失敗しました。URLを確認してください。";
+        }
+    }
+
+    // 2. 問題を表示する関数
+    function showQuestion() {
+        const data = quizData[currentIdx];
+        document.getElementById("question").innerText = `第${currentIdx + 1}問: ${data.q}`;
+        for (let i = 0; i < 4; i++) {
+            document.getElementById(`btn${i}`).innerText = data.choices[i];
+        }
+        document.getElementById("result").innerText = "";
+    }
+
+    // 3. 正解チェック
+    function checkAnswer(choiceIdx) {
+        const data = quizData[currentIdx];
+        const resultEl = document.getElementById("result");
+        if (data.choices[choiceIdx] === data.a) {
+            score++;
+            resultEl.innerText = "正解！ ✨";
+            resultEl.style.color = "green";
+        } else {
+            resultEl.innerText = "不正解... 答えは " + data.a;
+            resultEl.style.color = "red";
+        }
+    }
+
+    // 4. 次の問題へ（10問で終了）
+    function nextQuestion() {
+        currentIdx++;
+        if (currentIdx < 10 && currentIdx < quizData.length) {
+            showQuestion();
+        } else {
+            showFinalScore();
+        }
+    }
+
+    function showFinalScore() {
+        const container = document.getElementById("main-container");
+        container.innerHTML = `
+            <h2>終了！</h2>
+            <p>10問中 <strong>${score}問</strong> 正解でした！</p>
+            <button onclick="location.reload()">もう一度挑戦する</button>
+        `;
+    }
+
+    // アプリ起動！
+    initApp();
+</script>
+
+</body>
+</html>

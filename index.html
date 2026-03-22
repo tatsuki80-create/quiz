@@ -2,112 +2,163 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>スプレッドシート連動・英単語テスト</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>英単語クイズ完全版</title>
     <style>
-        /* 前回のCSSと同じ（省略せずそのまま使えます） */
-        body { font-family: sans-serif; display: flex; justify-content: center; padding-top: 50px; background-color: #f0f2f5; }
-        .quiz-container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); width: 400px; text-align: center; }
-        .question { font-size: 24px; font-weight: bold; margin-bottom: 20px; }
-        .choices { display: grid; gap: 10px; }
-        button { padding: 15px; font-size: 16px; cursor: pointer; border: 2px solid #007bff; background: white; border-radius: 8px; }
-        button:hover { background: #007bff; color: white; }
-        #result { margin-top: 20px; font-weight: bold; height: 24px; }
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background-color: #f8f9fa; }
+        .quiz-container { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 90%; max-width: 500px; text-align: center; }
+        .header-info { display: flex; justify-content: space-between; margin-bottom: 20px; font-weight: bold; color: #555; }
+        #timer { color: #e74c3c; font-size: 1.2rem; }
+        .question { font-size: 28px; font-weight: bold; margin-bottom: 30px; color: #333; }
+        .choices { display: grid; gap: 15px; }
+        button { padding: 15px; font-size: 18px; cursor: pointer; border: 2px solid #007bff; background: white; border-radius: 12px; transition: all 0.2s; outline: none; }
+        button:hover:not(:disabled) { background: #007bff; color: white; transform: translateY(-2px); }
+        button:disabled { cursor: not-allowed; opacity: 0.8; }
+        
+        /* 色の演出用クラス */
+        .correct { background-color: #2ecc71 !important; border-color: #27ae60 !important; color: white !important; }
+        .wrong { background-color: #e74c3c !important; border-color: #c0392b !important; color: white !important; }
+        
+        #result-text { margin-top: 25px; font-size: 20px; font-weight: bold; min-height: 30px; }
+        .next-btn { margin-top: 30px; width: 100%; border-color: #28a745; color: #28a745; font-weight: bold; display: none; }
+        .next-btn:hover { background: #28a745 !important; }
     </style>
 </head>
 <body>
 
-<div class="quiz-container" id="main-container">
-    <div id="loading">データを読み込み中...</div>
-    <div id="quiz-content" style="display:none;">
-        <div id="question" class="question"></div>
-        <div class="choices">
-            <button onclick="checkAnswer(0)" id="btn0"></button>
-            <button onclick="checkAnswer(1)" id="btn1"></button>
-            <button onclick="checkAnswer(2)" id="btn2"></button>
-            <button onclick="checkAnswer(3)" id="btn3"></button>
+<div class="quiz-container" id="main-box">
+    <div id="setup-screen">
+        <h2>英単語テスト</h2>
+        <p>スプレッドシートからデータを読み込みます</p>
+        <button onclick="startApp()">テストを開始する</button>
+    </div>
+
+    <div id="quiz-screen" style="display:none;">
+        <div class="header-info">
+            <div id="progress">第 1 / 10 問</div>
+            <div id="timer">残り: 10秒</div>
         </div>
-        <div id="result"></div>
-        <button onclick="nextQuestion()" style="margin-top:20px; border-color:#28a745;">次の問題へ</button>
+        <div id="question" class="question">読み込み中...</div>
+        <div class="choices" id="choice-container">
+            <button onclick="handleAnswer(0)" id="btn0"></button>
+            <button onclick="handleAnswer(1)" id="btn1"></button>
+            <button onclick="handleAnswer(2)" id="btn2"></button>
+            <button onclick="handleAnswer(3)" id="btn3"></button>
+        </div>
+        <div id="result-text"></div>
+        <button onclick="nextQuestion()" id="next-btn" class="next-btn">次の問題へ</button>
     </div>
 </div>
 
 <script>
-    // ★ここに自分のスプレッドシートのURL（CSV形式）を貼り付けてください
+    // ★重要：ここに自分のスプレッドシートのCSV URLを貼ってください
     const sheetUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQgShHlUrJzByyKPruQAjCUSEfbcNpN-VyxNKaoSBtb-RyQNjQVnxe3F8s4aZiupV9-k6nzt_1-BVdl/pub?gid=0&single=true&output=csv";
 
     let quizData = [];
     let currentIdx = 0;
     let score = 0;
+    let timerInterval;
+    let timeLeft = 10;
 
-    // 1. スプレッドシートからデータを取得する関数
-    async function initApp() {
+    // 音声の準備
+    const soundCorrect = new Audio('https://otologic.jp/free/se/bin/quiz-correct01.mp3'); 
+    const soundWrong = new Audio('https://otologic.jp/free/se/bin/quiz-wrong01.mp3');
+
+    async function startApp() {
+        document.getElementById("setup-screen").innerHTML = "読み込み中...";
         try {
             const response = await fetch(sheetUrl);
             const csvText = await response.text();
+            const rows = csvText.split(/\r?\n/).slice(1);
             
-            // CSVを解析（改行で区切って、各行をカンマで区切る）
-            const rows = csvText.split(/\r?\n/).slice(1); 
-            quizData = rows.map(row => {
+            quizData = rows.filter(row => row.trim() !== "").map(row => {
                 const [q, a, d1, d2, d3] = row.split(',');
-                // 選択肢を混ぜる（シャッフル）
-                const choices = [a, d1, d2, d3].sort(() => Math.random() - 0.5);
-                return { q, a, choices };
+                return { q, a, choices: [a, d1, d2, d3].sort(() => Math.random() - 0.5) };
             });
 
-            // 読み込みが終わったら画面を表示
-            document.getElementById("loading").style.display = "none";
-            document.getElementById("quiz-content").style.display = "block";
+            document.getElementById("setup-screen").style.display = "none";
+            document.getElementById("quiz-screen").style.display = "block";
             showQuestion();
-        } catch (error) {
-            document.getElementById("loading").innerText = "読み込みに失敗しました。URLを確認してください。";
+        } catch (e) {
+            alert("データの読み込みに失敗しました。URLを確認してください。");
         }
     }
 
-    // 2. 問題を表示する関数
     function showQuestion() {
         const data = quizData[currentIdx];
-        document.getElementById("question").innerText = `第${currentIdx + 1}問: ${data.q}`;
+        document.getElementById("progress").innerText = `第 ${currentIdx + 1} / 10 問`;
+        document.getElementById("question").innerText = data.q;
+        document.getElementById("result-text").innerText = "";
+        document.getElementById("next-btn").style.display = "none";
+
         for (let i = 0; i < 4; i++) {
-            document.getElementById(`btn${i}`).innerText = data.choices[i];
+            const btn = document.getElementById(`btn${i}`);
+            btn.innerText = data.choices[i];
+            btn.disabled = false;
+            btn.className = ""; // クラスのリセット
         }
-        document.getElementById("result").innerText = "";
+        startTimer();
     }
 
-    // 3. 正解チェック
-    function checkAnswer(choiceIdx) {
+    function startTimer() {
+        timeLeft = 10;
+        document.getElementById("timer").innerText = `残り: ${timeLeft}秒`;
+        clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+            timeLeft--;
+            document.getElementById("timer").innerText = `残り: ${timeLeft}秒`;
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                handleAnswer(-1); // 時間切れは -1 を渡す
+            }
+        }, 1000);
+    }
+
+    function handleAnswer(choiceIdx) {
+        clearInterval(timerInterval);
         const data = quizData[currentIdx];
-        const resultEl = document.getElementById("result");
-        if (data.choices[choiceIdx] === data.a) {
-            score++;
-            resultEl.innerText = "正解！ ✨";
-            resultEl.style.color = "green";
-        } else {
-            resultEl.innerText = "不正解... 答えは " + data.a;
-            resultEl.style.color = "red";
+        const resEl = document.getElementById("result-text");
+        
+        // 全ボタン無効化 & 正解をハイライト
+        for (let i = 0; i < 4; i++) {
+            const btn = document.getElementById(`btn${i}`);
+            btn.disabled = true;
+            if (btn.innerText === data.a) btn.classList.add("correct");
         }
+
+        if (choiceIdx !== -1 && data.choices[choiceIdx] === data.a) {
+            score++;
+            resEl.innerText = "正解！ ✨";
+            resEl.style.color = "#2ecc71";
+            soundCorrect.play();
+        } else {
+            if (choiceIdx !== -1) document.getElementById(`btn${choiceIdx}`).classList.add("wrong");
+            resEl.innerText = choiceIdx === -1 ? "時間切れ！" : "残念！";
+            resEl.style.color = "#e74c3c";
+            soundWrong.play();
+        }
+        document.getElementById("next-btn").style.display = "block";
     }
 
-    // 4. 次の問題へ（10問で終了）
     function nextQuestion() {
         currentIdx++;
         if (currentIdx < 10 && currentIdx < quizData.length) {
             showQuestion();
         } else {
-            showFinalScore();
+            showResult();
         }
     }
 
-    function showFinalScore() {
-        const container = document.getElementById("main-container");
-        container.innerHTML = `
-            <h2>終了！</h2>
-            <p>10問中 <strong>${score}問</strong> 正解でした！</p>
-            <button onclick="location.reload()">もう一度挑戦する</button>
+    function showResult() {
+        const box = document.getElementById("main-box");
+        let rank = score === 10 ? "完璧！天才です！" : score >= 7 ? "すごい！あと少し！" : "お疲れ様でした！";
+        box.innerHTML = `
+            <h2>結果発表</h2>
+            <p style="font-size: 40px; font-weight: bold;">${score} / 10 問</p>
+            <p>${rank}</p>
+            <button onclick="location.reload()" style="width:100%">もう一度挑戦する</button>
         `;
     }
-
-    // アプリ起動！
-    initApp();
 </script>
 
 </body>

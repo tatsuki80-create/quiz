@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>英単語クイズ完全版</title>
+    <title>英単語クイズ</title>
     <style>
         body { font-family: 'Helvetica Neue', Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background-color: #f8f9fa; }
         .quiz-container { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 90%; max-width: 500px; text-align: center; }
@@ -128,7 +128,7 @@
 
         if (choiceIdx !== -1 && data.choices[choiceIdx] === data.a) {
             score++;
-            resEl.innerText = "正解！ ✨";
+            resEl.innerText = "正解!!";
             resEl.style.color = "#2ecc71";
             soundCorrect.play();
         } else {
